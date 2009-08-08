@@ -61,6 +61,23 @@ apo.send(a3_addr, 6)
 
 ------------------------------------------
 
+function a4(self_addr, name)
+  print("a4", self_addr)
+
+  while true do
+    times = apo.recv()
+    a4_child = apo.spawn(a3)
+    apo.send(a4_child, times)
+  end
+end
+
+a4_addr = apo.spawn(a4, "mary")
+
+apo.send(a4_addr, 3)
+apo.send(a4_addr, 2)
+
+------------------------------------------
+
 apo.loop_until_empty()
 
 p("DONE")
