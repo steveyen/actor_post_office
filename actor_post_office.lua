@@ -17,15 +17,14 @@ local last_addr = 0
 local map_addr_to_coro = {} -- table, key'ed by addr.
 local map_coro_to_addr = {} -- table, key'ed by coro.
 
-local envelopes_in = {}
-local envelopes_out = {}
+local envelopes = {}
 
 ----------------------------------------
 
 local main_todos = {} -- array of funcs/closures, to be run on main thread.
 
 local function run_main_todos()
-  -- Only do work on main thread.
+  -- Check first if we're the main thread.
   if coroutine.running() == nil then
     local todo = nil
     repeat
@@ -39,6 +38,17 @@ end
 
 ----------------------------------------
 
+local function next_addr()
+  local curr_addr
+
+  repeat
+    last_addr = last_addr + 1
+    curr_addr = tostring(last_addr)
+  until map_addr_to_coro[curr_addr] == nil
+
+  return curr_addr
+end
+
 local function unregister(addr)
   local coro = map_addr_to_coro[addr]
   if coro then
@@ -50,9 +60,7 @@ end
 local function register(coro)
   unregister(map_coro_to_addr[coro])
 
-  last_addr = last_addr + 1
-
-  local curr_addr = tostring(last_addr)
+  local curr_addr = next_addr()
 
   map_addr_to_coro[curr_addr] = coro
   map_coro_to_addr[coro] = curr_addr
@@ -63,7 +71,7 @@ end
 ----------------------------------------
 
 local function deliver_envelope(envelope)
-  -- Must be main thread.
+  -- Must be invoked on main thread.
   if envelope then
     local coro = map_addr_to_coro[envelope.dest_addr]
     if coro and coroutine.status(coro) ~= 'dead' then
@@ -75,14 +83,14 @@ local function deliver_envelope(envelope)
 end
 
 local function step()
-  -- Must be main thread.
+  -- Must be invoked on main thread.
   run_main_todos()
 
-  return deliver_envelope(table.remove(envelopes_in, 1))
+  return deliver_envelope(table.remove(envelopes, 1))
 end
 
 local function loop_until_empty()
-  -- Only do work on main thread.
+  -- Check first if we're the main thread.
   if coroutine.running() == nil then
     local go = true
     while go do
@@ -91,7 +99,7 @@ local function loop_until_empty()
   end
 end
 
-local function loop(timeout)
+local function loop()
   while true do
     loop_until_empty()
   end
@@ -100,7 +108,7 @@ end
 ----------------------------------------
 
 local function send_msg(dest_addr, msg)
-  table.insert(envelopes_in, { dest_addr = dest_addr, msg = msg })
+  table.insert(envelopes, { dest_addr = dest_addr, msg = msg })
 
   loop_until_empty()
 end
@@ -144,13 +152,10 @@ end
 ----------------------------------------
 
 local actor_post_office = {
-  spawn    = spawn,
-  send     = send,
-  send_msg = send_msg,
-
-  recv = recv,
-  step = step,
-
+  spawn = spawn,
+  recv  = recv,
+  send  = send,
+  step  = step,
   loop             = loop,
   loop_until_empty = loop_until_empty
 }
