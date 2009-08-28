@@ -61,8 +61,8 @@ local function step(timeout)
 
   local readable, writable, err = socket.select(reading, writing, timeout)
 
-  process_ready(readable, "r")
   process_ready(writable, "w")
+  process_ready(readable, "r")
 
   if err == "timeout" and (#readable + #writable) > 0 then
     return nil
