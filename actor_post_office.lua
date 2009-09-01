@@ -208,6 +208,12 @@ local function deliver_envelope(envelope)
         return envelope
       end
 
+      -- Since the filter, if any, accepted the message,
+      -- clear it out otherwise other messages might get
+      -- inadvertently filtered.
+      --
+      mbox.filter = nil
+
       if not resume(mbox.coro, unpack(dest_msg)) then
         finish(envelope.dest_addr)
       end
@@ -234,17 +240,27 @@ local function loop_until_empty(force)
   -- Check first if we're the main thread.
   --
   if (coroutine.running() == nil) or force then
-    local resends = {}
+    local delivered = 0
 
-    while run_main_todos() and
-          (#envelopes > 0) do
-      local resend = deliver_envelope(table.remove(envelopes, 1))
-      if resend then
-        table.insert(resends, resend)
+    repeat
+      delivered = 0
+
+      local resends = {}
+
+      while run_main_todos() and
+            (#envelopes > 0) do
+        local resend = deliver_envelope(table.remove(envelopes, 1))
+        if resend then
+          resends[#resends + 1] = resend
+        else
+          delivered = delivered + 1
+        end
       end
-    end
 
-    envelopes = resends
+      assert(#envelopes <= 0)
+
+      envelopes = resends
+    until (#envelopes <= 0 or delivered <= 0)
   end
 end
 

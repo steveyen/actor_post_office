@@ -55,6 +55,8 @@ local function awake_actor(skt)
   skt_unwait(skt, writing, reverse_w)
 
   if actor_addr then
+    assert(skt)
+
     apo.send_later(actor_addr, "skt", skt)
   end
 end
