@@ -10,18 +10,24 @@ local writing = {} -- Array of sockets for next select().
 local reverse_r = {} -- Reverse lookup from socket to reading/writing index.
 local reverse_w = {} -- Reverse lookup from socket to reading/writing index.
 
-local waiting_actors = {} -- Keyed by socket, value is actor addr.
+local waiting_actor = {} -- Keyed by socket, value is actor addr.
 
 ------------------------------------------
 
 local function skt_unwait(skt, sockets, reverse)
-  waiting_actors[skt] = nil
+  waiting_actor[skt] = nil
+
   local cur = reverse[skt]
   if cur then
     reverse[skt] = nil
+
     local num = #sockets
     local top = sockets[num]
+
+    assert(cur >= 1 and cur <= num)
+
     sockets[num] = nil
+
     if cur < num then
       sockets[cur] = top
       reverse[top] = cur
@@ -30,7 +36,10 @@ local function skt_unwait(skt, sockets, reverse)
 end
 
 local function skt_wait(skt, sockets, reverse, actor_addr)
-  waiting_actors[skt] = actor_addr
+  assert(not waiting_actor[skt])
+  assert(not reverse[skt])
+
+  waiting_actor[skt] = actor_addr
   table.insert(sockets, skt)
   reverse[skt] = #sockets
 end
@@ -38,13 +47,15 @@ end
 ------------------------------------------
 
 local function awake_actor(skt)
-  local actor_addr = waiting_actors[skt]
+  assert(skt)
+
+  local actor_addr = waiting_actor[skt]
 
   skt_unwait(skt, reading, reverse_r)
   skt_unwait(skt, writing, reverse_w)
 
   if actor_addr then
-    apo.send_later(actor_addr, skt)
+    apo.send_later(actor_addr, "skt", skt)
   end
 end
 
@@ -73,11 +84,20 @@ end
 
 ------------------------------------------
 
+-- A filter for apo.recv(), where we only want awake_actor() calls.
+--
+local function filter_skt(s, skt)
+  return (s == "skt") and skt
+end
+
+------------------------------------------
+
 local function recv(actor_addr, skt, pattern, part)
   local s, err
 
   repeat
     skt_unwait(skt, reading, reverse_r)
+    skt_unwait(skt, writing, reverse_w)
 
     s, err, part = skt:receive(pattern, part)
     if s or err ~= "timeout" then
@@ -86,7 +106,8 @@ local function recv(actor_addr, skt, pattern, part)
 
     skt_wait(skt, reading, reverse_r, actor_addr)
 
-    coroutine.yield()
+    s, skt_recv = apo.recv(filter_skt)
+    assert(skt == skt_recv)
   until false
 end
 
@@ -95,6 +116,7 @@ local function send(actor_addr, skt, data, from, to)
   local lastIndex = from - 1
 
   repeat
+    skt_unwait(skt, reading, reverse_r)
     skt_unwait(skt, writing, reverse_w)
 
     local s, err, lastIndex = skt:send(data, lastIndex + 1, to)
@@ -104,7 +126,8 @@ local function send(actor_addr, skt, data, from, to)
 
     skt_wait(skt, writing, reverse_w, actor_addr)
 
-    coroutine.yield()
+    s, skt_recv = apo.recv(filter_skt)
+    assert(skt == skt_recv)
   until false
 end
 
@@ -113,6 +136,7 @@ local function loop_accept(actor_addr, skt, handler, timeout)
 
   repeat
     skt_unwait(skt, reading, reverse_r)
+    skt_unwait(skt, writing, reverse_w)
 
     local client_skt, err = skt:accept()
     if client_skt then
@@ -121,7 +145,8 @@ local function loop_accept(actor_addr, skt, handler, timeout)
 
     skt_wait(skt, reading, reverse_r, actor_addr)
 
-    coroutine.yield()
+    s, skt_recv = apo.recv(filter_skt)
+    assert(skt == skt_recv)
   until false
 end
 
