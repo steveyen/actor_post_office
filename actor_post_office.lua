@@ -277,7 +277,7 @@ end
 -- Asynchronous send of variable args as a message.
 --
 local function send_later(dest_addr, ...)
-  send_msg(dest_addr, arg)
+  send_msg(dest_addr, { ... })
 end
 
 -- Asynchronous send of variable args as a message.
@@ -287,7 +287,7 @@ end
 --
 local function send(dest_addr, ...)
   if dest_addr then
-    send_msg(dest_addr, arg)
+    send_msg(dest_addr, { ... })
   end
 
   loop_until_empty()
@@ -301,7 +301,7 @@ end
 --
 local function send_track(dest_addr, track_addr, track_args, ...)
   if dest_addr then
-    send_msg(dest_addr, arg, track_addr, track_args)
+    send_msg(dest_addr, { ... }, track_addr, track_args)
   end
 
   loop_until_empty()
@@ -331,7 +331,7 @@ end
 local function spawn_with(spawner, f, suffix, ...)
   local child_coro = nil
   local child_addr = nil
-  local child_arg = arg
+  local child_arg = { ... }
   local child_fun =
     function()
       -- TODO: Do we need xpcall around f()?
@@ -377,7 +377,7 @@ end
 --
 local function watch(target_addr, watcher_addr, ...)
   watcher_addr = watcher_addr or self_address()
-  watcher_arg  = arg
+  watcher_arg  = { ... }
 
   if target_addr and watcher_addr then
     local mbox = map_addr_to_mbox[target_addr]
